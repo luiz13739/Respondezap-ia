@@ -2,10 +2,9 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 
-/**
- * Cliente Supabase para uso em componentes do lado do cliente ("use client").
- * Utilizado em formulários de login, cadastro e chamadas feitas no navegador.
- */
+console.log("URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+console.log("KEY:", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.slice(0, 20));
+
 export function createClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
