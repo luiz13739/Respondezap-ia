@@ -3,12 +3,26 @@ import { createClient } from "@supabase/supabase-js";
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Cria o cliente apenas quando uma requisição chegar.
+// Isso evita erro durante o build da Vercel.
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// Verificação do Webhook pela Meta
+  if (!url) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL não encontrada.");
+  }
+
+  if (!serviceRoleKey) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY não encontrada.");
+  }
+
+  return createClient(url, serviceRoleKey);
+}
+
+// =========================
+// Verificação do Webhook
+// =========================
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
 
@@ -26,9 +40,13 @@ export async function GET(request: NextRequest) {
   );
 }
 
-// Recebe mensagens enviadas pelo WhatsApp
+// =========================
+// Recebe mensagens
+// =========================
 export async function POST(request: NextRequest) {
   try {
+    const supabase = getSupabase();
+
     const body = await request.json();
 
     console.log(
@@ -36,7 +54,6 @@ export async function POST(request: NextRequest) {
       JSON.stringify(body, null, 2)
     );
 
-    // Verifica se o evento veio da WhatsApp Cloud API
     if (body.object !== "whatsapp_business_account") {
       return NextResponse.json(
         { error: "Evento inválido" },
@@ -51,14 +68,10 @@ export async function POST(request: NextRequest) {
 
       for (const change of changes) {
         const value = change.value;
-
         const messages = value?.messages ?? [];
 
         for (const message of messages) {
-          // Por enquanto, processamos apenas mensagens de texto
-          if (message.type !== "text") {
-            continue;
-          }
+          if (message.type !== "text") continue;
 
           const customerPhone = message.from;
           const customerMessage = message.text?.body;
@@ -66,9 +79,7 @@ export async function POST(request: NextRequest) {
           const timestamp = message.timestamp;
           const phoneNumberId = value?.metadata?.phone_number_id;
 
-          if (!customerPhone || !customerMessage) {
-            continue;
-          }
+          if (!customerPhone || !customerMessage) continue;
 
           console.log("Mensagem recebida:", {
             customerPhone,
@@ -78,16 +89,10 @@ export async function POST(request: NextRequest) {
           });
 
           if (!phoneNumberId) {
-            console.error(
-              "Phone Number ID não encontrado."
-            );
+            console.error("Phone Number ID não encontrado.");
             continue;
           }
 
-          /*
-           * Procura qual usuário do RespondeZap
-           * é dono desse número do WhatsApp.
-           */
           const { data: connection, error: connectionError } =
             await supabase
               .from("whatsapp_connections")
@@ -97,7 +102,7 @@ export async function POST(request: NextRequest) {
 
           if (connectionError) {
             console.error(
-              "Erro ao encontrar conexão WhatsApp:",
+              "Erro ao encontrar conexão:",
               connectionError
             );
             continue;
@@ -105,35 +110,23 @@ export async function POST(request: NextRequest) {
 
           if (!connection) {
             console.error(
-              "Nenhuma empresa encontrada para o Phone Number ID:",
+              "Nenhuma empresa encontrada para:",
               phoneNumberId
             );
             continue;
           }
 
-          /*
-           * Evita salvar a mesma mensagem duas vezes.
-           */
           const { data: existingMessage } = await supabase
             .from("conversations")
             .select("id")
-            .eq(
-              "whatsapp_message_id",
-              whatsappMessageId
-            )
+            .eq("whatsapp_message_id", whatsappMessageId)
             .maybeSingle();
 
           if (existingMessage) {
-            console.log(
-              "Mensagem já foi salva:",
-              whatsappMessageId
-            );
+            console.log("Mensagem já salva.");
             continue;
           }
 
-          /*
-           * Salva a mensagem do cliente na tabela conversations.
-           */
           const { error: insertError } = await supabase
             .from("conversations")
             .insert({
@@ -143,9 +136,7 @@ export async function POST(request: NextRequest) {
               message: customerMessage,
               whatsapp_message_id: whatsappMessageId,
               created_at: timestamp
-                ? new Date(
-                    Number(timestamp) * 1000
-                  ).toISOString()
+                ? new Date(Number(timestamp) * 1000).toISOString()
                 : new Date().toISOString(),
             });
 
@@ -157,9 +148,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          console.log(
-            "Mensagem salva com sucesso no Supabase!"
-          );
+          console.log("Mensagem salva com sucesso!");
         }
       }
     }
@@ -168,10 +157,7 @@ export async function POST(request: NextRequest) {
       success: true,
     });
   } catch (error) {
-    console.error(
-      "Erro no Webhook do WhatsApp:",
-      error
-    );
+    console.error("Erro no Webhook:", error);
 
     return NextResponse.json(
       {
