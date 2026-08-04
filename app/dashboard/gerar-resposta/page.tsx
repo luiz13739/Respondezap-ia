@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sparkles, Copy, Check, MessageSquareText } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { generateResponse } from "@/lib/ai/generateResponse";
@@ -12,14 +12,35 @@ import type { AttendanceTone } from "@/lib/types";
 export default function GerarRespostaPage() {
   const supabase = createClient();
 
+  const [customerPhone, setCustomerPhone] = useState("");
   const [customerMessage, setCustomerMessage] = useState("");
   const [aiResponse, setAiResponse] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Preenche telefone e mensagem quando a página é aberta a partir de
+  // "Conversas" (ex: /gerar-resposta?phone=5511999999999&message=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const phoneFromUrl = params.get("phone");
+    const messageFromUrl = params.get("message");
+
+    if (phoneFromUrl) {
+      setCustomerPhone(phoneFromUrl);
+    }
+    if (messageFromUrl) {
+      setCustomerMessage(messageFromUrl);
+    }
+  }, []);
+
   const handleGenerate = async () => {
     setError(null);
+
+    if (!customerPhone.trim()) {
+      setError("Informe o telefone do cliente antes de gerar a resposta.");
+      return;
+    }
 
     if (!customerMessage.trim()) {
       setError("Cole a mensagem do cliente antes de gerar a resposta.");
@@ -59,6 +80,7 @@ export default function GerarRespostaPage() {
 
       const response = await generateResponse({
         customerMessage,
+        customerPhone: customerPhone.trim(),
         companyName: company?.name,
         segment: company?.segment,
         description: company?.description,
@@ -74,7 +96,8 @@ export default function GerarRespostaPage() {
         promotions: company?.promotions,
         tone: (company?.tone as AttendanceTone) ?? "amigavel",
       });
-            setAiResponse(response);
+
+      setAiResponse(response);
 
       if (user) {
         await supabase.from("responses").insert({
@@ -101,16 +124,19 @@ export default function GerarRespostaPage() {
       setCopied(false);
     }, 2000);
   };
+
   const handleOpenWhatsApp = () => {
-  if (!aiResponse) return;
+    if (!aiResponse) return;
 
-  const message = encodeURIComponent(aiResponse);
+    const message = encodeURIComponent(aiResponse);
+    const targetPhone = customerPhone.trim().replace(/\D/g, "");
 
-  window.open(
-    `https://wa.me/?text=${message}`,
-    "_blank"
-  );
-};
+    const url = targetPhone
+      ? `https://wa.me/${targetPhone}?text=${message}`
+      : `https://wa.me/?text=${message}`;
+
+    window.open(url, "_blank");
+  };
 
   return (
     <div className="mx-auto max-w-3xl animate-fadeIn">
@@ -132,6 +158,27 @@ export default function GerarRespostaPage() {
       </div>
 
       <Card>
+        <div className="mb-4">
+          <label
+            htmlFor="customerPhone"
+            className="mb-1 block text-sm font-medium text-gray-700"
+          >
+            Telefone do cliente
+          </label>
+          <input
+            id="customerPhone"
+            type="text"
+            placeholder="Ex: 5511999999999"
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            Usado para manter o histórico de cada cliente separado. Preenchido
+            automaticamente quando você vem da aba Conversas.
+          </p>
+        </div>
+
         <Textarea
           id="customerMessage"
           label="Mensagem do cliente"
@@ -166,32 +213,32 @@ export default function GerarRespostaPage() {
           </h2>
 
           {aiResponse && (
-  <div className="flex items-center gap-4">
-    <button
-      onClick={handleCopy}
-      className="flex items-center gap-1.5 text-xs font-medium text-brand-600 transition-colors hover:text-brand-700"
-    >
-      {copied ? (
-        <>
-          <Check className="h-3.5 w-3.5" />
-          Copiado
-        </>
-      ) : (
-        <>
-          <Copy className="h-3.5 w-3.5" />
-          Copiar
-        </>
-      )}
-    </button>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 text-xs font-medium text-brand-600 transition-colors hover:text-brand-700"
+              >
+                {copied ? (
+                  <>
+                    <Check className="h-3.5 w-3.5" />
+                    Copiado
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5" />
+                    Copiar
+                  </>
+                )}
+              </button>
 
-    <button
-      onClick={handleOpenWhatsApp}
-      className="flex items-center gap-1.5 text-xs font-medium text-green-600 transition-colors hover:text-green-700"
-    >
-      📲 Abrir no WhatsApp
-    </button>
-  </div>
-)}
+              <button
+                onClick={handleOpenWhatsApp}
+                className="flex items-center gap-1.5 text-xs font-medium text-green-600 transition-colors hover:text-green-700"
+              >
+                📲 Abrir no WhatsApp
+              </button>
+            </div>
+          )}
         </div>
 
         {isGenerating ? (

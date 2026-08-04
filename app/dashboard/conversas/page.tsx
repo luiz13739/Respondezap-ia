@@ -1,6 +1,8 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/Card";
 import {
@@ -12,6 +14,7 @@ import {
   AlertCircle,
   Inbox,
   ArrowLeft,
+  Sparkles,
 } from "lucide-react";
 
 interface ConversationRow {
@@ -32,6 +35,7 @@ interface GroupedConversation {
 
 export default function ConversasPage() {
   const supabase = createClient();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -138,6 +142,30 @@ export default function ConversasPage() {
   function truncate(text: string | null, max: number) {
     if (!text) return "";
     return text.length > max ? `${text.slice(0, max)}...` : text;
+  }
+
+  // Pega a última mensagem enviada PELO CLIENTE (não pela IA) para
+  // pré-preencher a tela de Gerar Resposta.
+  function getLastCustomerMessage(conversation: GroupedConversation) {
+    for (let i = conversation.messages.length - 1; i >= 0; i--) {
+      const msg = conversation.messages[i];
+      if (msg.role !== "assistant") {
+        return msg.message ?? "";
+      }
+    }
+    return conversation.lastMessage.message ?? "";
+  }
+
+  function handleGenerateResponse(conversation: GroupedConversation) {
+    const phone = conversation.customerPhone;
+    const message = getLastCustomerMessage(conversation);
+
+    const params = new URLSearchParams({
+      phone,
+      message,
+    });
+
+    router.push(`/gerar-resposta?${params.toString()}`);
   }
 
   const selectedConversation = conversations.find(
@@ -260,9 +288,16 @@ export default function ConversasPage() {
                 <h2 className="font-medium text-gray-900 text-sm">
                   {selectedConversation.customerPhone}
                 </h2>
-                <span className="text-xs text-gray-400 ml-auto">
+                <span className="text-xs text-gray-400 ml-auto mr-3">
                   {selectedConversation.messageCount} mensagens
                 </span>
+                <button
+                  onClick={() => handleGenerateResponse(selectedConversation)}
+                  className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Gerar Resposta
+                </button>
               </div>
 
               <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-gray-50">

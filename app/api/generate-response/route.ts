@@ -5,21 +5,20 @@ export async function POST(request: Request) {
   try {
     const supabase = createClient();
 
-const {
-  data: { user },
-} = await supabase.auth.getUser();
-console.log("Usuário logado:", user?.id);
-if (!user) {
-  return NextResponse.json(
-    { error: "Usuário não autenticado" },
-    { status: 401 }
-  );
-  
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  
-}
+    if (!user) {
+      return NextResponse.json(
+        { error: "Usuário não autenticado" },
+        { status: 401 }
+      );
+    }
+
     const {
       customerMessage,
+      customerPhone,
       companyName,
       segment,
       description,
@@ -35,44 +34,69 @@ if (!user) {
       promotions,
       tone,
     } = await request.json();
-    const { data: history } = await supabase
-  .from("conversations")
-  .select("role, message")
-  .eq("user_id", user.id)
-  .order("created_at", { ascending: false })
-  .limit(10);
 
-const conversationHistory = (history ?? [])
-  .reverse()
-  .map(
-    (msg) =>
-      `${msg.role === "user" ? "Cliente" : "Atendente"}: ${msg.message}`
-  )
-  .join("\n");
-    console.log({
-  companyName,
-  businessHours,
-  phone,
-  address,
-  faq,
-});
-    const { error: saveError } = await supabase
-  .from("conversations")
-  .insert({
-    user_id: user.id,
-    customer_phone: "cliente",
-    role: "user",
-    message: customerMessage,
-  });
+    if (!customerMessage || !customerMessage.trim()) {
+      return NextResponse.json(
+        { error: "A mensagem do cliente é obrigatória" },
+        { status: 400 }
+      );
+    }
 
-console.log("Erro ao salvar mensagem:", saveError);
+    if (!customerPhone || !customerPhone.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "O telefone do cliente (customerPhone) é obrigatório para manter o histórico separado por conversa",
+        },
+        { status: 400 }
+      );
+    }
 
-const today = new Date().toLocaleDateString("pt-BR", {
-  weekday: "long",
-  day: "2-digit",
-  month: "long",
-  year: "numeric",
-});
+    // Busca SOMENTE o histórico deste cliente específico, desta empresa (user.id).
+    // Isso garante que o histórico de um cliente nunca se misture com o de outro.
+    const { data: history, error: historyError } = await supabase
+      .from("conversations")
+      .select("role, message")
+      .eq("user_id", user.id)
+      .eq("customer_phone", customerPhone)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (historyError) {
+      console.log("Erro ao buscar histórico:", historyError);
+    }
+
+    // Histórico em ordem cronológica (a query veio do mais recente pro mais antigo)
+    const conversationHistory = (history ?? [])
+      .reverse()
+      .map(
+        (msg) =>
+          `${msg.role === "user" ? "Cliente" : "Atendente"}: ${msg.message}`
+      )
+      .join("\n");
+
+    // Salva a mensagem do cliente JÁ vinculada ao telefone correto,
+    // antes de gerar a resposta (assim ela não entra duplicada no histórico acima).
+    const { error: saveUserError } = await supabase
+      .from("conversations")
+      .insert({
+        user_id: user.id,
+        customer_phone: customerPhone,
+        role: "user",
+        message: customerMessage,
+      });
+
+    if (saveUserError) {
+      console.log("Erro ao salvar mensagem do cliente:", saveUserError);
+    }
+
+    const today = new Date().toLocaleDateString("pt-BR", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+
     const prompt = `
 Você é um atendente profissional de WhatsApp de uma empresa.
 
@@ -183,6 +207,14 @@ ${customerMessage}
 Responda somente a mensagem que será enviada ao cliente.
 `;
 
+console.log("========== HISTÓRICO ==========");
+console.log(conversationHistory);
+
+console.log("========== MENSAGEM ATUAL ==========");
+console.log(customerMessage);
+
+console.log("========== CUSTOMER PHONE ==========");
+console.log(customerPhone);
     const response = await fetch(
       "https://api.groq.com/openai/v1/chat/completions",
       {
@@ -205,27 +237,32 @@ Responda somente a mensagem que será enviada ao cliente.
     );
 
     const data = await response.json();
-await supabase
-  .from("conversations")
-  .insert({
-    user_id: user.id,
-    customer_phone: "cliente",
-    role: "assistant",
-    message: data.choices[0].message.content,
-  });
-    if (!response.ok) {
-      console.log(data);
 
-      return NextResponse.json(
-        { error: "Erro na IA" },
-        { status: 500 }
-      );
+    // Só tenta salvar/retornar a resposta da IA se a chamada realmente deu certo.
+    if (!response.ok || !data?.choices?.[0]?.message?.content) {
+      console.log(data);
+      return NextResponse.json({ error: "Erro na IA" }, { status: 500 });
+    }
+
+    const aiMessage = data.choices[0].message.content as string;
+
+    // Salva a resposta da IA com o MESMO customer_phone da mensagem do cliente
+    const { error: saveAssistantError } = await supabase
+      .from("conversations")
+      .insert({
+        user_id: user.id,
+        customer_phone: customerPhone,
+        role: "assistant",
+        message: aiMessage,
+      });
+
+    if (saveAssistantError) {
+      console.log("Erro ao salvar resposta da IA:", saveAssistantError);
     }
 
     return NextResponse.json({
-      response: data.choices[0].message.content,
+      response: aiMessage,
     });
-
   } catch (error) {
     console.log(error);
 

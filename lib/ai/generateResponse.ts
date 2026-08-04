@@ -2,6 +2,7 @@ import type { AttendanceTone } from "@/lib/types";
 
 interface GenerateResponseParams {
   customerMessage: string;
+  customerPhone: string;
   companyName?: string;
   segment?: string;
   description?: string;
@@ -20,6 +21,7 @@ interface GenerateResponseParams {
 
 export async function generateResponse({
   customerMessage,
+  customerPhone,
   companyName,
   segment,
   description,
@@ -42,6 +44,7 @@ export async function generateResponse({
     },
     body: JSON.stringify({
       customerMessage,
+      customerPhone,
       companyName,
       segment,
       description,
