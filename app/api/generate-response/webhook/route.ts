@@ -24,6 +24,9 @@ function getSupabase() {
 // Verificação do Webhook
 // =========================
 export async function GET(request: NextRequest) {
+  
+    console.log("VERIFY_TOKEN =", process.env.WHATSAPP_VERIFY_TOKEN);
+    
   const searchParams = request.nextUrl.searchParams;
 
   const mode = searchParams.get("hub.mode");
