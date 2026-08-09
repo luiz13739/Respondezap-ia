@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
 
+  console.log("VERIFY_TOKEN:", VERIFY_TOKEN);
+console.log("TOKEN RECEBIDO:", token);
+
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
     return new NextResponse(challenge);
   }
