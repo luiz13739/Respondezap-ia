@@ -105,6 +105,9 @@ export async function POST(request: NextRequest) {
               .select("user_id")
               .eq("phone_number_id", phoneNumberId)
               .maybeSingle();
+              
+              console.log("CONEXÃO ENCONTRADA:", connection);
+console.log("ERRO DA CONEXÃO:", connectionError);
 
           if (connectionError) {
             console.error(
