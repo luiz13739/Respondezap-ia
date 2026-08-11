@@ -108,6 +108,9 @@ export async function POST(request: NextRequest) {
               .maybeSingle();
 
               console.log("CONEXÃO ENCONTRADA:", connection);
+              console.log("PHONE NUMBER ID RECEBIDO:", phoneNumberId);
+console.log("CONEXÃO:", JSON.stringify(connection));
+console.log("ERRO:", JSON.stringify(connectionError));
 console.log("ERRO DA CONEXÃO:", connectionError);
 
           if (connectionError) {
