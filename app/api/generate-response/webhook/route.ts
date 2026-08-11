@@ -112,6 +112,15 @@ export async function POST(request: NextRequest) {
 console.log("CONEXÃO:", JSON.stringify(connection));
 console.log("ERRO:", JSON.stringify(connectionError));
 console.log("ERRO DA CONEXÃO:", connectionError);
+console.log("PHONE ID RECEBIDO PELA META:", phoneNumberId);
+
+const { data: testeConexoes, error: testeErro } =
+  await supabase
+    .from("whatsapp_connections")
+    .select("*");
+
+console.log("CONEXÕES NO BANCO:", testeConexoes);
+console.log("ERRO AO BUSCAR CONEXÕES:", testeErro);
 
           if (connectionError) {
             console.error(
