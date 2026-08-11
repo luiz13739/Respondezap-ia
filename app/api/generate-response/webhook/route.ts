@@ -53,6 +53,15 @@ export async function POST(request: NextRequest) {
   console.log("🔥 POST DO WHATSAPP CHEGOU NO CÓDIGO");
   try {
     const supabase = getSupabase();
+    console.log(
+  "SUPABASE URL:",
+  process.env.NEXT_PUBLIC_SUPABASE_URL
+);
+
+console.log(
+  "SERVICE ROLE EXISTE:",
+  !!process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
     const body = await request.json();
 
