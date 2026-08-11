@@ -50,6 +50,7 @@ console.log("TOKEN RECEBIDO:", token);
 // Recebe mensagens
 // =========================
 export async function POST(request: NextRequest) {
+  console.log("🔥 POST DO WHATSAPP CHEGOU NO CÓDIGO");
   try {
     const supabase = getSupabase();
 
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
               .select("user_id")
               .eq("phone_number_id", phoneNumberId)
               .maybeSingle();
-              
+
               console.log("CONEXÃO ENCONTRADA:", connection);
 console.log("ERRO DA CONEXÃO:", connectionError);
 
