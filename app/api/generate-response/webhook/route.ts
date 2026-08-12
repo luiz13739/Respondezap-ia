@@ -53,6 +53,13 @@ export async function POST(request: NextRequest) {
   console.log("🔥 POST DO WHATSAPP CHEGOU NO CÓDIGO");
   try {
     const supabase = getSupabase();
+    const { data: testConnections, error: testError } =
+  await supabase
+    .from("whatsapp_connections")
+    .select("*");
+
+console.log("🔥 TESTE DIRETO DO BANCO:", testConnections);
+console.log("🔥 ERRO TESTE DIRETO:", testError);
     console.log(
   "SUPABASE URL:",
   process.env.NEXT_PUBLIC_SUPABASE_URL
