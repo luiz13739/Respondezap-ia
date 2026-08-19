@@ -76,7 +76,7 @@ export default function ConversasPage() {
 
       const rows = (data ?? []) as ConversationRow[];
 
-      console.log("🔥 USUÁRIO LOGADO:", user.id);
+console.log("🔥 USUÁRIO LOGADO:", user.id);
 console.log("🔥 CONVERSAS BUSCADAS:", data);
 console.log("🔥 ERRO AO BUSCAR CONVERSAS:", error);
 
