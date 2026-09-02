@@ -5,6 +5,10 @@ export async function POST(request: Request) {
   try {
     const supabase = createClient();
 
+    // ==============================
+    // AUTENTICAÇÃO
+    // ==============================
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -15,6 +19,10 @@ export async function POST(request: Request) {
         { status: 401 }
       );
     }
+
+    // ==============================
+    // DADOS RECEBIDOS
+    // ==============================
 
     const {
       customerMessage,
@@ -35,6 +43,10 @@ export async function POST(request: Request) {
       tone,
     } = await request.json();
 
+    // ==============================
+    // VALIDAÇÕES
+    // ==============================
+
     if (!customerMessage || !customerMessage.trim()) {
       return NextResponse.json(
         { error: "A mensagem do cliente é obrigatória" },
@@ -46,14 +58,33 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            "O telefone do cliente (customerPhone) é obrigatório para manter o histórico separado por conversa",
+            "O telefone do cliente é obrigatório para manter o histórico separado por conversa",
         },
         { status: 400 }
       );
     }
 
-    // Busca SOMENTE o histórico deste cliente específico, desta empresa (user.id).
-    // Isso garante que o histórico de um cliente nunca se misture com o de outro.
+    // ==============================
+    // VERIFICA API KEY
+    // ==============================
+
+    if (!process.env.GROQ_API_KEY) {
+      console.error("❌ GROQ_API_KEY NÃO ENCONTRADA NO SERVIDOR");
+
+      return NextResponse.json(
+        {
+          error: "A chave da Groq não está configurada no servidor.",
+        },
+        { status: 500 }
+      );
+    }
+
+    console.log("✅ GROQ_API_KEY encontrada");
+
+    // ==============================
+    // BUSCAR HISTÓRICO
+    // ==============================
+
     const { data: history, error: historyError } = await supabase
       .from("conversations")
       .select("role, message")
@@ -63,10 +94,9 @@ export async function POST(request: Request) {
       .limit(10);
 
     if (historyError) {
-      console.log("Erro ao buscar histórico:", historyError);
+      console.error("❌ Erro ao buscar histórico:", historyError);
     }
 
-    // Histórico em ordem cronológica (a query veio do mais recente pro mais antigo)
     const conversationHistory = (history ?? [])
       .reverse()
       .map(
@@ -75,8 +105,10 @@ export async function POST(request: Request) {
       )
       .join("\n");
 
-    // Salva a mensagem do cliente JÁ vinculada ao telefone correto,
-    // antes de gerar a resposta (assim ela não entra duplicada no histórico acima).
+    // ==============================
+    // SALVAR MENSAGEM DO CLIENTE
+    // ==============================
+
     const { error: saveUserError } = await supabase
       .from("conversations")
       .insert({
@@ -87,8 +119,15 @@ export async function POST(request: Request) {
       });
 
     if (saveUserError) {
-      console.log("Erro ao salvar mensagem do cliente:", saveUserError);
+      console.error(
+        "❌ Erro ao salvar mensagem do cliente:",
+        saveUserError
+      );
     }
+
+    // ==============================
+    // DATA ATUAL
+    // ==============================
 
     const today = new Date().toLocaleDateString("pt-BR", {
       weekday: "long",
@@ -96,6 +135,10 @@ export async function POST(request: Request) {
       month: "long",
       year: "numeric",
     });
+
+    // ==============================
+    // PROMPT
+    // ==============================
 
     const prompt = `
 Você é um atendente profissional de WhatsApp de uma empresa.
@@ -186,10 +229,9 @@ Cliente:
 "Qual o valor?"
 
 Resposta:
-"Claro! Vou verificar essa informação para você." 
-(Não invente valores caso não estejam cadastrados)
+"Claro! Vou verificar essa informação para você."
 
-
+- Não invente valores caso não estejam cadastrados.
 - Nunca diga que você é uma inteligência artificial.
 - Use emojis apenas quando combinar com o tom da empresa.
 - Adapte a linguagem ao segmento.
@@ -207,15 +249,20 @@ ${customerMessage}
 Responda somente a mensagem que será enviada ao cliente.
 `;
 
-console.log("========== HISTÓRICO ==========");
-console.log(conversationHistory);
+    // ==============================
+    // LOGS
+    // ==============================
 
-console.log("========== MENSAGEM ATUAL ==========");
-console.log(customerMessage);
+    console.log("========== GERANDO RESPOSTA ==========");
+    console.log("MENSAGEM:", customerMessage);
+    console.log("TELEFONE:", customerPhone);
+    console.log("MODELO: llama-3.3-70b-versatile");
 
-console.log("========== CUSTOMER PHONE ==========");
-console.log(customerPhone);
-    const response = await fetch(
+    // ==============================
+    // CHAMADA PARA GROQ
+    // ==============================
+
+    const groqResponse = await fetch(
       "https://api.groq.com/openai/v1/chat/completions",
       {
         method: "POST",
@@ -236,17 +283,50 @@ console.log(customerPhone);
       }
     );
 
-    const data = await response.json();
+    // ==============================
+    // RESPOSTA DA GROQ
+    // ==============================
 
-    // Só tenta salvar/retornar a resposta da IA se a chamada realmente deu certo.
-    if (!response.ok || !data?.choices?.[0]?.message?.content) {
-      console.log(data);
-      return NextResponse.json({ error: "Erro na IA" }, { status: 500 });
+    const data = await groqResponse.json();
+
+    console.log("========== RESPOSTA DA GROQ ==========");
+    console.log("STATUS:", groqResponse.status);
+    console.log("OK:", groqResponse.ok);
+    console.log("DATA:", JSON.stringify(data, null, 2));
+
+    if (!groqResponse.ok) {
+      console.error("❌ ERRO DA GROQ");
+
+      return NextResponse.json(
+        {
+          error: "Erro na Groq",
+          details: data,
+        },
+        { status: groqResponse.status }
+      );
+    }
+
+    if (!data?.choices?.[0]?.message?.content) {
+      console.error("❌ GROQ NÃO RETORNOU UMA RESPOSTA");
+
+      return NextResponse.json(
+        {
+          error: "A Groq não retornou uma resposta.",
+          details: data,
+        },
+        { status: 500 }
+      );
     }
 
     const aiMessage = data.choices[0].message.content as string;
 
-    // Salva a resposta da IA com o MESMO customer_phone da mensagem do cliente
+    console.log("========== RESPOSTA DA IA ==========");
+    console.log(aiMessage);
+
+    // ==============================
+    // SALVAR RESPOSTA DA IA
+    // ==============================
+
     const { error: saveAssistantError } = await supabase
       .from("conversations")
       .insert({
@@ -257,17 +337,38 @@ console.log(customerPhone);
       });
 
     if (saveAssistantError) {
-      console.log("Erro ao salvar resposta da IA:", saveAssistantError);
+      console.error(
+        "❌ Erro ao salvar resposta da IA:",
+        saveAssistantError
+      );
+
+      return NextResponse.json(
+        {
+          error: "A IA respondeu, mas não foi possível salvar a resposta.",
+          details: saveAssistantError.message,
+        },
+        { status: 500 }
+      );
     }
+
+    // ==============================
+    // SUCESSO
+    // ==============================
+
+    console.log("✅ RESPOSTA GERADA COM SUCESSO");
 
     return NextResponse.json({
       response: aiMessage,
     });
   } catch (error) {
-    console.log(error);
+    console.error("========== ERRO GERAL ==========");
+    console.error(error);
 
     return NextResponse.json(
-      { error: "Erro ao gerar resposta" },
+      {
+        error: "Erro ao gerar resposta",
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
